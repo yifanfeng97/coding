@@ -2,7 +2,7 @@ from __future__ import print_function
 import sys
 sys.path.append('../')
 sys.path.append('../utils')
-import torch.utils.data as data
+from torch.utils.data import Dataset
 import os
 import os.path
 import torch
@@ -11,9 +11,20 @@ import utils
 import numpy as np
 
 
+class Modelnet40_dataset(Dataset):
+    def __init__(self, cfg, status='train'):
+        super(Modelnet40_dataset, self).__init__()
 
 
-class Modelnet40_Dataset_old(data.Dataset):
+    def __len__(self):
+        pass
+
+    def __getitem__(self, index):
+        pass
+
+
+
+class Modelnet40_Dataset_old(Dataset):
     def __init__(self, data_dir, image_size = 299, train=True, n_views = 12):
         self.image_size = image_size
         self.data_dir = data_dir
