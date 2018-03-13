@@ -4,16 +4,45 @@ import sys
 import os.path as osp
 import pickle
 import glob
+from random import shuffle
 
 def random_split():
     cfg = utils.config.config()
-    train = []
-    test = []
-    train_data = []
-    val_data = []
-    train = get_filename_list('train', cfg.data_root, cfg.data_views)
-    test = get_filename_list('test', cfg.data_root, cfg.data_views)
+    train = get_filenames('train', cfg.data_root, cfg.data_views)
+    test = get_filenames('test', cfg.data_root, cfg.data_views)
+    train = get_filename_list(train)
+    test = get_filename_list(test)
 
+    val_num = int(len(train)*cfg.val_ratio)
+
+    shuffle(train)
+    shuffle(test)
+    val_list = train[:val_num]
+    train_list = train[val_num:]
+    train = {
+        'train': train_list,
+        'val': val_list
+    }
+
+    with open(cfg.split_train, 'w') as f:
+        pickle.dump(train, f)
+    with open(cfg.split_test, 'w') as f:
+        pickle.dump(test, f)
+
+
+def get_filename_list(data_raw):
+    data_list = []
+    for c in data_raw:
+        lbl = c['label_idx']
+        lbl_name = c['label']
+        for shape in c['shapes']:
+            data_list.append({
+                'label': lbl,
+                'label_name':lbl_name,
+                'imgs':shape.values()[0],
+                'shape_name': shape.keys()[0]
+            })
+    return data_list
 
 def get_d_list(d_root, data_views):
     """
@@ -50,7 +79,7 @@ def get_d_list(d_root, data_views):
     return structed_data
 
 
-def get_filename_list(data_type, root, data_views):
+def get_filenames(data_type, root, data_views):
     filename_list = []
     data_all = glob.glob(osp.join(root, '*'))
     data_all = sorted(data_all)
@@ -62,7 +91,7 @@ def get_filename_list(data_type, root, data_views):
         d_list = get_d_list(d_root, data_views)
         filename_list.append({'label': d_lbl,
                               'label_idx': d_lbl_idx,
-                              'imgs': d_list})
+                              'shapes': d_list})
     return filename_list
 
 

@@ -1,19 +1,19 @@
 from __future__ import print_function
+import sys
+sys.path.append('../')
+sys.path.append('../utils')
 import torch.utils.data as data
 import os
 import os.path
-import errno
 import torch
-import json
 import h5py
-
+import utils
 import numpy as np
-import sys
-
-import json
 
 
-class Modelnet40_Dataset(data.Dataset):
+
+
+class Modelnet40_Dataset_old(data.Dataset):
     def __init__(self, data_dir, image_size = 299, train=True, n_views = 12):
         self.image_size = image_size
         self.data_dir = data_dir
