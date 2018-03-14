@@ -28,14 +28,10 @@ def inception_v3(pretrained=False, **kwargs):
         
         pretrained_dict = model_zoo.load_url(model_urls['inception_v3_google'])
         model_dict = model.state_dict()
-        # 将pretrained_dict里不属于model_dict的键剔除掉
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and k.find('fc')==-1}
-        # 更新现有的model_dict
         model_dict.update(pretrained_dict)
-        # 加载我们真正需要的state_dict
         model.load_state_dict(model_dict)
 
-        
 #        model.load_state_dict(model_zoo.load_url(model_urls['inception_v3_google']))
         return model
 
@@ -44,8 +40,8 @@ def inception_v3(pretrained=False, **kwargs):
 
 class Inception3(nn.Module):
 
-    def __init__(self, num_classes=1000, aux_logits=True, transform_input=False,\
-                 n_views = 8, n_groups = -1, get_para = False, with_group = True):
+    def __init__(self, num_classes=40, aux_logits=False, transform_input=False,
+                 n_views = 8, n_groups = -1, get_para = False, with_group = False):
         super(Inception3, self).__init__()
         self.n_views = n_views
         self.get_para = get_para
@@ -90,6 +86,10 @@ class Inception3(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, x):
+
+        x= x.view(x.size(0)*x.size(1),
+                  x.size(2), x.size(3), x.size(4))
+
         if self.transform_input:
             x = x.clone()
             x[:, 0] = x[:, 0] * (0.229 / 0.5) + (0.485 - 0.5) / 0.5
@@ -138,8 +138,8 @@ class Inception3(nn.Module):
             x_quality = torch.ceil(x_quality)
             # print(x_quality.data.cpu())
             # End Quality
-        else:
-            x_quality = x.clone()
+        # else:
+        #     x_quality = x.clone()
         
         x = self.Mixed_5b(x)
         # 35 x 35 x 256
@@ -158,7 +158,23 @@ class Inception3(nn.Module):
         x = self.Mixed_6e(x)
         # 17 x 17 x 768
         if self.training and self.aux_logits:
-            aux = self.AuxLogits(x, x_quality)
+            x_t = x.clone()
+            if self.with_group:
+                # group view pooling
+                x_t = x_t.view(-1, self.n_views, x_t.size()[1], x_t.size()[2], x_t.size()[3])
+                x_quality_sum = torch.sum(x_quality, 1)
+                x_t = x_t * x_quality
+                x_t = torch.sum(x_t, 1)
+                x_t = x_t / x_quality_sum
+                # end group view pooling
+            else:
+                # max view pooling
+                x_t = x_t.view(-1, self.n_views, x_t.size()[1], x_t.size()[2], x_t.size()[3])
+                x_t, _ = torch.max(x_t, 1)
+                # end max view pooling
+                x_t = x_t.view(x_t.size(0), -1)
+            aux = self.AuxLogits(x_t)
+
         # 17 x 17 x 768
         x = self.Mixed_7a(x)
         # 8 x 8 x 1280
@@ -198,7 +214,8 @@ class Inception3(nn.Module):
         # 1000 (num_classes)
         if self.training and self.aux_logits:
             return x, aux
-        return x
+        else:
+            return x
 
 
 class InceptionA(nn.Module):

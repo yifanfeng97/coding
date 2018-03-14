@@ -29,6 +29,9 @@ class config(object):
         self.print_freq = cfg.getint('TRAIN', 'print_freq')
         self.gpu_id = cfg.getint('TRAIN', 'gpu_id')
 
+        self.have_aux = cfg.getboolean('TRAIN', 'have_aux')
+        self.with_group = cfg.getboolean('TRAIN', 'with_group')
+
         self.ckpt_folder = cfg.get('TRAIN', 'ckpt_folder')
         self.split_train = cfg.get('TRAIN', 'split_train')
         self.split_test = cfg.get('TRAIN', 'split_test')

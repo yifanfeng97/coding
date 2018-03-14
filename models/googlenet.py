@@ -28,14 +28,11 @@ def inception_v3(pretrained=False, **kwargs):
         
         pretrained_dict = model_zoo.load_url(model_urls['inception_v3_google'])
         model_dict = model.state_dict()
-        # 将pretrained_dict里不属于model_dict的键剔除掉
+        #
         pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and k.find('fc')==-1}
-        # 更新现有的model_dict
         model_dict.update(pretrained_dict)
-        # 加载我们真正需要的state_dict
         model.load_state_dict(model_dict)
 
-        
 #        model.load_state_dict(model_zoo.load_url(model_urls['inception_v3_google']))
         return model
 

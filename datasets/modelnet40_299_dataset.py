@@ -7,20 +7,48 @@ import os
 import os.path
 import torch
 import h5py
+import pickle
 import utils
 import numpy as np
+import img_transform
+from PIL import Image
 
 
 class Modelnet40_dataset(Dataset):
-    def __init__(self, cfg, status='train'):
+    def __init__(self, cfg, status='train', img_sz=299):
         super(Modelnet40_dataset, self).__init__()
+        if status == 'test':
+            with open(cfg.split_test, 'r') as f:
+                self.shape_list = pickle.load(f)
+        else:
+            with open(cfg.split_train, 'r') as f:
+                self.shape_list = pickle.load(f)
+            if status == 'train':
+                self.shape_list = self.shape_list['train']
+            else:
+                self.shape_list = self.shape_list['val']
 
-
-    def __len__(self):
-        pass
+        self.img_sz = img_sz
+        self.cfg = cfg
+        self.transform = img_transform.get_transform(img_sz)
+        self.untransform = img_transform.get_untransform(img_sz)
 
     def __getitem__(self, index):
-        pass
+        shape = self.shape_list[index]
+        img_names = shape['imgs']
+        lbl = shape['label']
+        imgs = torch.zeros((self.cfg.data_views,
+                            3, self.img_sz, self.img_sz))
+
+        for idx, img_name in enumerate(img_names):
+            img = Image.open(img_name)
+            img = self.transform(img)
+            imgs[idx] = img
+        return imgs, lbl
+
+    def __len__(self):
+        return len(self.shape_list)
+
 
 
 
@@ -95,7 +123,7 @@ class Modelnet40_Dataset_old(Dataset):
             return self.test_data.size(0)
 
 
-class Modelnet40_r20_Dataset(data.Dataset):
+class Modelnet40_r20_Dataset(Dataset):
     def __init__(self, data_dir, image_size=299):
         self.image_size = image_size
         self.data_dir = data_dir
@@ -123,11 +151,11 @@ class Modelnet40_r20_Dataset(data.Dataset):
 
 if __name__ == '__main__':
     print('test')
-    train_dataset = Modelnet40_Dataset(data_dir='/home/hxw/project_work_on/shape_research/multiview_cnn/data', train=True)
+    train_dataset = Modelnet40_Dataset_old(data_dir='/home/hxw/project_work_on/shape_research/multiview_cnn/data', train=True)
     # train_dataset.compute_mean_std()
     print(len(train_dataset))
 
-    test_dataset = Modelnet40_Dataset(data_dir='/home/hxw/project_work_on/shape_research/multiview_cnn/data', train=False)
+    test_dataset = Modelnet40_Dataset_old(data_dir='/home/hxw/project_work_on/shape_research/multiview_cnn/data', train=False)
     print(len(test_dataset))
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8,
                                      shuffle=True, num_workers=2)

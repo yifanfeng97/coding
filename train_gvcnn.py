@@ -10,68 +10,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.parallel  # for multi-GPU training
-import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import torch.utils.data
 
 from torch.autograd import Variable
 
-import models.googlenet_clustering_modelnet40 as gnet
-import misc.modelnet40_299_dataset as modelnet40_dset
-import misc.utils as utils
-# from logger import *
+from models import gvcnn
 
-# import my_modules.utils as mutils
-
-from IPython.core.debugger import Tracer
-
-debug_here = Tracer()
-
-parser = argparse.ArgumentParser()
-
-# specify data and datapath
-parser.add_argument('--dataset', default='modelnet40_v12', help='modelnet40_v12 | ?? ')
-parser.add_argument('--data_dir', default='../data/data_h5', help='path to dataset')
-# number of workers for loading data
-parser.add_argument('--workers', type=int,
-                    help='number of data loading workers, 0 means loading data using the main process(this)', default=2)
-# loading data
-parser.add_argument('--batchSize', type=int, default=8, help='input batch size')
-parser.add_argument('--pool_idx', type=int, default=21,
-                    help='where to pool, avoid to pool at relu when it is inplace, mark dirty error')
-# spcify optimization stuff
-parser.add_argument('--adam', action='store_true', help='Whether to use adam (default is rmsprop)')
-parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
-                    help='initial learning rate')
-parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
-parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
-                    help='weight decay (default: 1e-4)')
-
-parser.add_argument('--max_epochs', type=int, default=100, help='number of epochs to train for')
-# parser.add_argument('--workers', type=int, help='number of data loading workers', default=4)
-parser.add_argument('--nepoch', type=int, default=25, help='number of epochs to train for')
-parser.add_argument('--print_freq', type=int, default=25, help='number of iterations to print ')
-parser.add_argument('--checkpoint_folder', default=None, help='check point path')
-parser.add_argument('--model', type=str, default='', help='model path')
-
-# cuda stuff
-parser.add_argument('--gpu_id', type=str, default='1', help='which gpu to use, used only when ngpu is 1')
-parser.add_argument('--cuda', action='store_true', help='enables cuda')
-parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
-# clamp parameters into a cube
-parser.add_argument('--gradient_clip', type=float, default=0.01)
-
-parser.add_argument('--have_aux', type=bool, default=False)
-parser.add_argument('--input_views', type=int, default=12)
-
-# resume training from a checkpoint
-parser.add_argument('--init_model', default='', help="model to resume training")
-parser.add_argument('--optim_state_from', default='', help="optim state to resume training")
-parser.add_argument('--with_group', default=False, type=bool, help="whether with group")
-
-opt = parser.parse_args()
-print(opt)
-with_group = False
 
 if opt.checkpoint_folder is None:
     if with_group:
@@ -165,16 +110,6 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, opt):
         labels = labels.long().view(-1)
         if isinstance(inputs_12v, torch.ByteTensor):
             inputs_12v = inputs_12v.float()
-        # # expanding: (bz * 12) x 3 x 224 x 224
-        #        inputs_12v = inputs_12v.expand(inputs_12v.size(0), 3,
-        #            inputs_12v.size(2), inputs_12v.size(3))
-
-        # byte tensor to float tensor
-        # normalize data here instead of using clouse in dataset class, because it is
-        # not format 12 x 1 x H x W in stead of C x H x W
-        #        mean =  223.03979492188
-        #        std = 1.0
-        #        inputs_12v = utils.preprocess(inputs_12v, mean, std, False) # False means not do data augmentation
 
         inputs_12v = Variable(inputs_12v)
         labels = Variable(labels)
