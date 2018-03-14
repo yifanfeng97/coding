@@ -10,12 +10,17 @@ import numpy as np
 
 from models import gvcnn
 from datasets import modelnet40
+from utils import meter
 import utils.config
+import utils.meter.averagevaluemeter
+import utils.meter.confusionmeter
+import train_helper
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data
+
 
 from torch.autograd import Variable
 
@@ -25,13 +30,14 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, opt):
     """
     train for one epoch on the training set
     """
-    batch_time = utils.AverageMeter()
-    losses = utils.AverageMeter()
-    top1 = utils.AverageMeter()
+    batch_time = meter.timemeter.TimeMeter()
+    data_time = meter.timemeter.TimeMeter()
+    losses = meter.averagevaluemeter.AverageValueMeter()
+    prec = meter.classerrormeter.ClassErrorMeter(topk=[1], accuracy=True)
     #############################################
     ## confusion table
     #############################################
-    confusion = utils.ConfusionMatrix(40)
+    confusion = utils.meter.confusionmeter.ConfusionMeter(40)
 
     # training mode
     model_gnet.train()
@@ -102,8 +108,8 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, opt):
         ## measure accuracy
         ###########################################
         prec1 = utils.accuracy(preds.data, labels.data, topk=(1,))[0]
-        losses.update(loss.data[0], preds.size(0))  # batchsize
-        top1.update(prec1[0], preds.size(0))
+        losses.add(loss.data[0], preds.size(0))  # batchsize
+        prec.add(prec1[0], preds.size(0))
 
         ###############################################
         ## confusion table
@@ -167,14 +173,14 @@ def validate(test_loader, model_gnet, criterion, optimizer, epoch, opt):
     """
     test for one epoch on the testing set
     """
-    batch_time = utils.AverageMeter()
-    losses = utils.AverageMeter()
-    top1 = utils.AverageMeter()
+    batch_time = utils.meter.AverageMeter()
+    losses = utils.meter.AverageMeter()
+    top1 = utils.meter.AverageMeter()
 
     ###############################
     ## confusion table
     ###############################
-    confusion = utils.ConfusionMatrix(40)
+    confusion = utils.meter.ConfusionMatrix(40)
 
     # training mode
     model_gnet.eval()
@@ -363,17 +369,8 @@ def main():
         if best_prec1 < prec1:
             best_prec1 = prec1
 
-            checkpoint = {'model_param_best': model.state_dict()}
-            utils.save_checkpoint(checkpoint, cfg.ckpt_model)
+            train_helper.save_ckpt(cfg, model, epoch, best_prec1, optim)
 
-            # save optim state
-            optim_state = {
-                'epoch': epoch,
-                'best_prec1': best_prec1,
-                'optim_state_best': optimizer.state_dict()
-            }
-            utils.save_checkpoint(optim_state, cfg.ckpt_optim)
-            # problem, should we store latest optim state or model, currently, we donot
 
         print('best accuracy: ', best_prec1)
 

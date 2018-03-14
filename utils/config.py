@@ -27,7 +27,7 @@ class config(object):
         self.weight_decay = cfg.getfloat('TRAIN', 'weight_decay')
         self.max_epoch = cfg.getint('TRAIN', 'max_epoch')
         self.print_freq = cfg.getint('TRAIN', 'print_freq')
-        self.gpu_id = cfg.getint('TRAIN', 'gpu_id')
+        self.gpu_id = cfg.get('TRAIN', 'gpu_id')
 
         self.resume_train = cfg.getboolean('TRAIN', 'resume_train')
         self.cuda = cfg.getboolean('TRAIN', 'cuda')
