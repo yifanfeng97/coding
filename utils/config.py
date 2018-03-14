@@ -29,6 +29,9 @@ class config(object):
         self.print_freq = cfg.getint('TRAIN', 'print_freq')
         self.gpu_id = cfg.getint('TRAIN', 'gpu_id')
 
+        self.resume_train = cfg.getboolean('TRAIN', 'resume_train')
+        self.cuda = cfg.getboolean('TRAIN', 'cuda')
+
         self.have_aux = cfg.getboolean('TRAIN', 'have_aux')
         self.with_group = cfg.getboolean('TRAIN', 'with_group')
 

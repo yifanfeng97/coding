@@ -2,87 +2,23 @@
 
 from __future__ import print_function
 import argparse
+import datasets
 import random
 import time
 import os
 import numpy as np
 
+from models import gvcnn
+from datasets import modelnet40
+import utils.config
+
 import torch
 import torch.nn as nn
-import torch.nn.parallel  # for multi-GPU training
 import torch.optim as optim
 import torch.utils.data
 
 from torch.autograd import Variable
 
-from models import gvcnn
-
-
-if opt.checkpoint_folder is None:
-    if with_group:
-        if opt.have_aux:
-            opt.checkpoint_folder = '%d_gnet_group_models_with_aux_checkpoint' % opt.input_views
-        else:
-            opt.checkpoint_folder = '%d_gnet_group_models_checkpoint' % opt.input_views
-    else:
-        if opt.have_aux:
-            opt.checkpoint_folder = '%d_gnet_no_group_models_with_aux_checkpoint' % opt.input_views
-        else:
-            opt.checkpoint_folder = '%d_gnet_no_group_models_checkpoint' % opt.input_views
-
-# make dir
-os.system('mkdir {0}'.format(opt.checkpoint_folder))
-print('mkdir %s' % opt.checkpoint_folder)
-# # logger dir
-# os.system('mkdir log')
-# logger = None
-# log_pre_name = None
-# if opt.have_aux:
-#     os.system('rm -r log/%d_gnet_clustering_aux'%opt.input_views)
-#     os.system('mkdir log/%d_gnet_clustering_aux'%opt.input_views)
-#     logger = Logger('log/%d_gnet_clustering_aux'%opt.input_views)
-#     log_pre_name='gnet/with_quality/with_aux/'
-# else:
-#     os.system('rm -r log/%d_gnet_clustering'%opt.input_views)
-#     os.system('mkdir log/%d_gnet_clustering'%opt.input_views)
-#     logger = Logger('log/%d_gnet_clustering'%opt.input_views)
-#     log_pre_name='gnet/with_quality/without_aux/'
-# dataset
-if opt.dataset == 'modelnet40_v12':
-    train_dataset = modelnet40_dset.Modelnet40_Dataset \
-        (opt.data_dir, image_size=299, train=True, n_views=opt.input_views)
-    test_dataset = modelnet40_dset.Modelnet40_Dataset \
-        (opt.data_dir, image_size=299, train=False, n_views=opt.input_views)
-else:
-    print('not supported dataset, so exit')
-    exit()
-
-data_dir = r'../data'
-
-print('number of train samples is: ', len(train_dataset))
-print('number of test samples is: ', len(test_dataset))
-print('finished loading data')
-
-os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpu_id
-
-ngpu = int(opt.ngpu)
-# opt.manualSeed = random.randint(1, 10000) # fix seed
-opt.manualSeed = 123456
-
-if torch.cuda.is_available() and not opt.cuda:
-    print("WARNING: You have a CUDA device, so you should probably run with --cuda")
-else:
-    if ngpu == 1:
-        print('so we use 1 gpu to training')
-        print('setting gpu on gpuid {0}'.format(opt.gpu_id))
-
-        if opt.cuda:
-            torch.cuda.manual_seed(opt.manualSeed)
-
-cudnn.benchmark = True
-print("Random Seed: ", opt.manualSeed)
-random.seed(opt.manualSeed)
-torch.manual_seed(opt.manualSeed)
 
 
 def train(train_loader, model_gnet, criterion, optimizer, epoch, opt):
@@ -338,67 +274,72 @@ def validate(test_loader, model_gnet, criterion, optimizer, epoch, opt):
 
 
 def main():
-    global opt
+    cfg = utils.config.config()
+    os.environ['CUDA_VISIBLE_DEVICES'] = cfg.gpu_id
+    train_dataset = datasets.modelnet40.Modelnet40_dataset(cfg, status='train')
+    val_dataset = datasets.modelnet40.Modelnet40_dataset(cfg, status='val')
+
+    print('number of train samples is: ', len(train_dataset))
+    print('number of test samples is: ', len(val_dataset))
+
     best_prec1 = 0
     # only used when we resume training from some checkpoint model
     resume_epoch = 0
     # train data loader
     # for loader, droplast by default is set to false
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=opt.batchSize,
-                                               shuffle=True, num_workers=int(opt.workers))
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=opt.batchSize,
-                                              shuffle=True, num_workers=int(opt.workers))
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=cfg.batch_size,
+                                               shuffle=True, num_workers=cfg.workers)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=cfg.batch_size,
+                                              shuffle=True, num_workers=cfg.workers)
 
     # create model
-    model_gnet = gnet.inception_v3(pretrained=True, aux_logits=opt.have_aux,
-                                   transform_input=True, num_classes=40, \
-                                   n_views=opt.input_views, with_group=with_group)
-    if opt.init_model != '':
-        print('loading pretrained model from {0}'.format(opt.init_model))
-        checkpoint = torch.load(opt.init_model)
-        model_gnet.load_state_dict(checkpoint['google_net'])
+    model = gvcnn.GVCNN(pretrained=True, aux_logits=cfg.have_aux,
+                                   transform_input=True, num_classes=40,
+                                   n_views=cfg.data_views, with_group=cfg.with_group)
+    if cfg.resume_train:
+        print('loading pretrained model from {0}'.format(cfg.ckpt_model))
+        checkpoint = torch.load(cfg.ckpt_model)
+        model.load_state_dict(checkpoint['model_param_best'])
 
-    print('google net model: ')
-    print(model_gnet)
+    print('GVCNN: ')
+    print(model)
 
     # optimizer
-    optimizer = optim.SGD(model_gnet.parameters(), opt.lr,
-                          momentum=opt.momentum,
-                          weight_decay=opt.weight_decay)
+    optimizer = optim.SGD(model.parameters(), cfg.lr,
+                          momentum=cfg.momentum,
+                          weight_decay=cfg.weight_decay)
 
     # if we load model from pretrained, we need the optim state here
-    if opt.optim_state_from != '':
-        print('loading optim model from {0}'.format(opt.optim_state_from))
-        optim_state = torch.load(opt.optim_state_from)
+    if cfg.resume_train:
+        print('loading optim model from {0}'.format(cfg.ckpt_optim))
+        optim_state = torch.load(cfg.ckpt_optim)
 
         resume_epoch = optim_state['epoch']
         best_prec1 = optim_state['best_prec1']
         optimizer.load_state_dict(optim_state['optim_state_best'])
 
-
-
         # cross entropy already contains logsoftmax
     criterion = nn.CrossEntropyLoss()
 
-    if opt.cuda:
+    if cfg.cuda:
         print('shift model and criterion to GPU .. ')
-        model_gnet = model_gnet.cuda()
+        model = model.cuda()
         # define loss function (criterion) and pptimizer
         criterion = criterion.cuda()
     # optimizer
     # fix model_prev_pool parameters
-    for p in model_gnet.parameters():
+    for p in model.parameters():
         p.requires_grad = False  # to avoid computation
-    for p in model_gnet.fc.parameters():
+    for p in model.fc.parameters():
         p.requires_grad = True  # to  computation
-    if with_group:
-        for p in model_gnet.fc_q.parameters():
+    if cfg.with_group:
+        for p in model.fc_q.parameters():
             p.requires_grad = True
-    if opt.have_aux:
-        for p in model_gnet.AuxLogits.parameters():
+    if cfg.have_aux:
+        for p in model.AuxLogits.parameters():
             p.requires_grad = True  # to  computation
 
-    for epoch in range(resume_epoch, opt.max_epochs):
+    for epoch in range(resume_epoch, cfg.max_epoch):
         #################################
         # train for one epoch
         # debug_here()
@@ -406,38 +347,35 @@ def main():
         # debug_here()
 
         if epoch >= 20:
-            for p in model_gnet.parameters():
+            for p in model.parameters():
                 p.requires_grad = True
 
-        train(train_loader, model_gnet, criterion, optimizer, epoch, opt)
+        train(train_loader, model, criterion, optimizer, epoch, cfg)
 
         #################################
         # validate
         #################################
-        prec1 = validate(test_loader, model_gnet, criterion, optimizer, epoch, opt)
+        prec1 = validate(val_loader, model, criterion, optimizer, epoch, opt)
 
         ##################################
         # save checkpoints
         ##################################
         if best_prec1 < prec1:
             best_prec1 = prec1
-            path_checkpoint = '{0}/model_best.pth'.format(opt.checkpoint_folder)
-            checkpoint = {}
-            checkpoint['google_net'] = model_gnet.state_dict()
 
-            utils.save_checkpoint(checkpoint, path_checkpoint)
+            checkpoint = {'model_param_best': model.state_dict()}
+            utils.save_checkpoint(checkpoint, cfg.ckpt_model)
 
             # save optim state
-            path_optim_state = '{0}/optim_state_best.pth'.format(opt.checkpoint_folder)
-            optim_state = {}
-            optim_state['epoch'] = epoch + 1  # because epoch starts from 0
-            optim_state['best_prec1'] = best_prec1
-            optim_state['optim_state_best'] = optimizer.state_dict()
-            utils.save_checkpoint(optim_state, path_optim_state)
+            optim_state = {
+                'epoch': epoch,
+                'best_prec1': best_prec1,
+                'optim_state_best': optimizer.state_dict()
+            }
+            utils.save_checkpoint(optim_state, cfg.ckpt_optim)
             # problem, should we store latest optim state or model, currently, we donot
 
         print('best accuracy: ', best_prec1)
-
 
 if __name__ == '__main__':
     main()

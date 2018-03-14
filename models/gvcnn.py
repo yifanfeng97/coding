@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
 
 
-__all__ = ['Inception3', 'inception_v3']
+__all__ = ['GVCNN', '_GVCNN']
 
 
 model_urls = {
@@ -15,7 +15,7 @@ model_urls = {
 }
 
 
-def inception_v3(pretrained=False, **kwargs):
+def GVCNN(pretrained=False, **kwargs):
     r"""Inception v3 model architecture from
     `"Rethinking the Inception Architecture for Computer Vision" <http://arxiv.org/abs/1512.00567>`_.
     Args:
@@ -24,7 +24,7 @@ def inception_v3(pretrained=False, **kwargs):
     if pretrained:
         if 'transform_input' not in kwargs:
             kwargs['transform_input'] = True
-        model = Inception3(**kwargs)
+        model = _GVCNN(**kwargs)
         
         pretrained_dict = model_zoo.load_url(model_urls['inception_v3_google'])
         model_dict = model.state_dict()
@@ -35,14 +35,14 @@ def inception_v3(pretrained=False, **kwargs):
 #        model.load_state_dict(model_zoo.load_url(model_urls['inception_v3_google']))
         return model
 
-    return Inception3(**kwargs)
+    return _GVCNN(**kwargs)
 
 
-class Inception3(nn.Module):
+class _GVCNN(nn.Module):
 
     def __init__(self, num_classes=40, aux_logits=False, transform_input=False,
                  n_views = 8, n_groups = -1, get_para = False, with_group = False):
-        super(Inception3, self).__init__()
+        super(_GVCNN, self).__init__()
         self.n_views = n_views
         self.get_para = get_para
         self.with_group = with_group
