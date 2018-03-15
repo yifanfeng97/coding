@@ -7,8 +7,6 @@ from models import gvcnn
 from datasets import modelnet40
 from utils import meter
 import utils.config
-import utils.meter.averagevaluemeter
-import utils.meter.confusionmeter
 
 import torch
 import torch.utils.data
@@ -19,9 +17,9 @@ def test(test_loader, model_gnet, cfg):
     """
     test for one epoch on the testing set
     """
-    batch_time = meter.timemeter.TimeMeter(True)
-    data_time = meter.timemeter.TimeMeter(True)
-    prec = meter.classerrormeter.ClassErrorMeter(topk=[1], accuracy=True)
+    batch_time = meter.TimeMeter(True)
+    data_time = meter.TimeMeter(True)
+    prec = meter.ClassErrorMeter(topk=[1], accuracy=True)
     mAP = meter.mAPMeter()
 
     # training mode

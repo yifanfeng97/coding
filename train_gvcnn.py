@@ -7,8 +7,6 @@ from models import gvcnn
 from datasets import modelnet40
 from utils import meter
 import utils.config
-import utils.meter.averagevaluemeter
-import utils.meter.confusionmeter
 import train_helper
 
 import torch
@@ -23,10 +21,10 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, cfg):
     """
     train for one epoch on the training set
     """
-    batch_time = meter.timemeter.TimeMeter(True)
-    data_time = meter.timemeter.TimeMeter(True)
-    losses = meter.averagevaluemeter.AverageValueMeter()
-    prec = meter.classerrormeter.ClassErrorMeter(topk=[1], accuracy=True)
+    batch_time = meter.TimeMeter(True)
+    data_time = meter.TimeMeter(True)
+    losses = meter.AverageValueMeter()
+    prec = meter.ClassErrorMeter(topk=[1], accuracy=True)
     # training mode
     model_gnet.train()
 
@@ -77,10 +75,10 @@ def validate(val_loader, model_gnet, criterion, epoch, cfg):
     """
     validation for one epoch on the val set
     """
-    batch_time = meter.timemeter.TimeMeter(True)
-    data_time = meter.timemeter.TimeMeter(True)
-    losses = meter.averagevaluemeter.AverageValueMeter()
-    prec = meter.classerrormeter.ClassErrorMeter(topk=[1], accuracy=True)
+    batch_time = meter.TimeMeter(True)
+    data_time = meter.TimeMeter(True)
+    losses = meter.AverageValueMeter()
+    prec = meter.ClassErrorMeter(topk=[1], accuracy=True)
 
     # training mode
     model_gnet.eval()
@@ -151,8 +149,8 @@ def main():
         checkpoint = torch.load(cfg.ckpt_model)
         model.load_state_dict(checkpoint['model_param_best'])
 
-    print('GVCNN: ')
-    print(model)
+    # print('GVCNN: ')
+    # print(model)
 
     # optimizer
     optimizer = optim.SGD(model.parameters(), cfg.lr,
@@ -196,7 +194,6 @@ def main():
         lr_scheduler.step(epoch=epoch)
         train(train_loader, model, criterion, optimizer, epoch, cfg)
         prec1 = validate(val_loader, model, criterion, epoch, cfg)
-
 
         # save checkpoints
         if best_prec1 < prec1:

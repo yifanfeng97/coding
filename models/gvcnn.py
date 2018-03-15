@@ -5,41 +5,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
 
-__all__ = ['GVCNN', '_GVCNN']
+__all__ = ['GVCNN']
 
 model_urls = {
     # Inception v3 ported from TensorFlow
     'inception_v3_google': 'https://download.pytorch.org/models/inception_v3_google-1a9a5a14.pth',
 }
 
-
-def GVCNN(pretrained=False, **kwargs):
-    r"""Inception v3 model architecture from
-    `"Rethinking the Inception Architecture for Computer Vision" <http://arxiv.org/abs/1512.00567>`_.
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-    """
-    if pretrained:
-        if 'transform_input' not in kwargs:
-            kwargs['transform_input'] = False
-        model = _GVCNN(**kwargs)
-
-        pretrained_dict = model_zoo.load_url(model_urls['inception_v3_google'])
-        model_dict = model.state_dict()
-        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and k.find('fc') == -1}
-        model_dict.update(pretrained_dict)
-        model.load_state_dict(model_dict)
-
-        #        model.load_state_dict(model_zoo.load_url(model_urls['inception_v3_google']))
-        return model
-
-    return _GVCNN(**kwargs)
-
-
-class _GVCNN(nn.Module):
-    def __init__(self, num_classes=40, aux_logits=False, transform_input=False,
+class GVCNN(nn.Module):
+    def __init__(self, pretrained=False, num_classes=40, aux_logits=False, transform_input=False,
                  n_views=8, n_groups=-1, get_para=False, with_group=False):
-        super(_GVCNN, self).__init__()
+        super(GVCNN, self).__init__()
         self.n_views = n_views
         self.get_para = get_para
         self.with_group = with_group
@@ -71,16 +47,37 @@ class _GVCNN(nn.Module):
             self.fc_q = nn.Linear(35 * 35 * 192, 1)
             self.sig = nn.Sigmoid()
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
-                import scipy.stats as stats
-                stddev = m.stddev if hasattr(m, 'stddev') else 0.1
-                X = stats.truncnorm(-2, 2, scale=stddev)
-                values = torch.Tensor(X.rvs(m.weight.data.numel()))
-                m.weight.data.copy_(values)
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
+        self.init_param(pretrained)
+
+    def init_param(self, pretrained):
+        if pretrained:
+            print('init model param from pretrained googlenet!')
+            pretrained_dict = model_zoo.load_url(model_urls['inception_v3_google'])
+            model_dict = self.state_dict()
+            pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and k.find('fc') == -1}
+            model_dict.update(pretrained_dict)
+            self.load_state_dict(model_dict)
+            # init fc
+            for m in self.modules():
+                if isinstance(m, nn.Linear):
+                    import scipy.stats as stats
+                    stddev = m.stddev if hasattr(m, 'stddev') else 0.1
+                    X = stats.truncnorm(-2, 2, scale=stddev)
+                    values = torch.Tensor(X.rvs(m.weight.data.numel()))
+                    m.weight.data.copy_(values)
+        else:
+            # init all
+            print('init model param!')
+            for m in self.modules():
+                if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                    import scipy.stats as stats
+                    stddev = m.stddev if hasattr(m, 'stddev') else 0.1
+                    X = stats.truncnorm(-2, 2, scale=stddev)
+                    values = torch.Tensor(X.rvs(m.weight.data.numel()))
+                    m.weight.data.copy_(values)
+                elif isinstance(m, nn.BatchNorm2d):
+                    m.weight.data.fill_(1)
+                    m.bias.data.zero_()
 
     def forward(self, x):
 

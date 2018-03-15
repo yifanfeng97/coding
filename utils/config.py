@@ -18,6 +18,7 @@ class config(object):
         self.input_views = cfg.getint('DEFAULT', 'input_views')
         self.val_ratio = cfg.getfloat('DEFAULT', 'val_ratio')
         self.model_type = cfg.get('DEFAULT', 'model_type')
+        self.with_group = True if self.model_type=='group' else False
         self.class_num = cfg.getint('DEFAULT', 'class_num')
 
         # train
@@ -34,7 +35,6 @@ class config(object):
         self.cuda = cfg.getboolean('TRAIN', 'cuda')
 
         self.have_aux = cfg.getboolean('TRAIN', 'have_aux')
-        self.with_group = cfg.getboolean('TRAIN', 'with_group')
 
         self.result_sub_folder = cfg.get('TRAIN', 'result_sub_folder')
         self.ckpt_folder = cfg.get('TRAIN', 'ckpt_folder')
