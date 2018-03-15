@@ -23,6 +23,9 @@ def random_split():
         'train': train_list,
         'val': val_list
     }
+    print('train num: %d'% len(train_list))
+    print('val num: %d'% len(val_list))
+    print('test num: %d'% len(test))
 
     with open(cfg.split_train, 'w') as f:
         pickle.dump(train, f)

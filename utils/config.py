@@ -35,7 +35,10 @@ class config(object):
         self.have_aux = cfg.getboolean('TRAIN', 'have_aux')
         self.with_group = cfg.getboolean('TRAIN', 'with_group')
 
+        self.result_sub_folder = cfg.get('TRAIN', 'result_sub_folder')
         self.ckpt_folder = cfg.get('TRAIN', 'ckpt_folder')
+        self.split_folder = cfg.get('TRAIN', 'split_folder')
+
         self.split_train = cfg.get('TRAIN', 'split_train')
         self.split_test = cfg.get('TRAIN', 'split_test')
         self.ckpt_model = cfg.get('TRAIN', 'ckpt_model')
@@ -46,7 +49,9 @@ class config(object):
 
     def check_dirs(self):
         self.check_dir(self.result_root)
+        self.check_dir(self.result_sub_folder)
         self.check_dir(self.ckpt_folder)
+        self.check_dir(self.split_folder)
 
     def check_dir(self, _dir):
         if not osp.exists(_dir):
