@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
-import argparse
 import datasets
 import random
 import time
@@ -26,12 +25,12 @@ from torch.autograd import Variable
 
 
 
-def train(train_loader, model_gnet, criterion, optimizer, epoch, opt):
+def train(train_loader, model_gnet, criterion, optimizer, epoch, cfg):
     """
     train for one epoch on the training set
     """
-    batch_time = meter.timemeter.TimeMeter()
-    data_time = meter.timemeter.TimeMeter()
+    batch_time = meter.timemeter.TimeMeter(True)
+    data_time = meter.timemeter.TimeMeter(True)
     losses = meter.averagevaluemeter.AverageValueMeter()
     prec = meter.classerrormeter.ClassErrorMeter(topk=[1], accuracy=True)
     #############################################
@@ -42,58 +41,24 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, opt):
     # training mode
     model_gnet.train()
 
-    end = time.time()
-    for i, (inputs_12v, labels) in enumerate(train_loader):
+    for i, (shapes, labels) in enumerate(train_loader):
+        batch_time.reset()
         # bz x 12 x 3 x 224 x 224
-        # re-view it to be : (bz * 12) x 3 x 224 x 224
-        # note that inputs_12v.size(2) = 1, so we expand it to be 3
-        inputs_12v = inputs_12v.view(inputs_12v.size(0) * inputs_12v.size(1), inputs_12v.size(2),
-                                     inputs_12v.size(3), inputs_12v.size(4))
         labels = labels.long().view(-1)
-        if isinstance(inputs_12v, torch.ByteTensor):
-            inputs_12v = inputs_12v.float()
-
-        inputs_12v = Variable(inputs_12v)
+        shapes = Variable(shapes)
         labels = Variable(labels)
 
-        # print(points.size())
-        # print(labels.size())
-        # shift data to GPU
-        if opt.cuda:
-            inputs_12v = inputs_12v.cuda()
+        if cfg.cuda:
+            shapes = shapes.cuda()
             #            labels = labels.long().cuda() # must be long cuda tensor
             labels = labels.cuda()  # must be long cuda tensor
 
         # forward, backward optimize
         # (bz*12) X C x H x W
 
-        preds = model_gnet(inputs_12v)  # bz x C x H x W
-        #        print('labels:\n', labels.data)
-        #        print('preds:\n', preds.data)
-        # in pytorch, unlike torch, the label is 0-indexed (start from 0)
-        #        labels = labels.sub_(1)
+        preds = model_gnet(shapes)  # bz x C x H x W
 
-        # debug_here()
-        # if labels.data.max() >= 40:
-        #    debug_here()
-        #   print('error')
-
-        # if labels.data.min() < 0:
-        #    debug_here()
-        #    print('error')
-        ###########################################
-        ## add center loss
-        ###########################################
-        # 40 classes
-        #        alpha = 0.1
-        #        # preds as features
-        #        center_loss, model_after_pool._buffers['centers'] = utils.get_center_loss(model_after_pool._buffers['centers'],
-        #            preds, labels, alpha, 40)
-        #
-        #        # contrastive center loss
-        #        print('size')
-        #        print(preds.size(), labels.size())
-        if opt.have_aux:
+        if cfg.have_aux:
             preds, aux = preds
             loss_main = criterion(preds, labels)
             loss_aux = criterion(aux, labels)
@@ -107,18 +72,10 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, opt):
         ###########################################
         ## measure accuracy
         ###########################################
-        prec1 = utils.accuracy(preds.data, labels.data, topk=(1,))[0]
+        prec.add(preds.data, labels.data)
         losses.add(loss.data[0], preds.size(0))  # batchsize
-        prec.add(prec1[0], preds.size(0))
 
-        ###############################################
-        ## confusion table
-        ###############################################
-        #        print('preds:')
-        #        print(preds.data)
-        #        print('labels:')
-        #        print(labels.data)
-        confusion.batchAdd(preds.data, labels.data)
+        confusion.add(preds.data, labels.data)
 
         ###########################################
         ## backward
@@ -130,15 +87,14 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, opt):
 
         # debug_here()
         # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-        if i % opt.print_freq == 0:
+        if i % cfg.print_freq == 0:
             print('Epoch: [{0}][{1}/{2}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})'.format(
-                epoch, i, len(train_loader), batch_time=batch_time,
-                loss=losses, top1=top1))
+                  'Batch Time {batch_time:.3f}\t'
+                  'Epoch Time {data_time:.3f}\t'
+                  'Loss {loss:.4f} \t'
+                  'Prec@1 {top1:.3f}\t'.format(
+                epoch, i, len(train_loader), batch_time=batch_time.value(),
+                data_time=data_time.value(), loss=losses.value()[0], top1=prec.value(1)))
             # ###########################################
             # ## Log
             # ###########################################
@@ -165,92 +121,78 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, opt):
     ## confusion table
     #####################################
     # debug_here()
-    confusion.updateValids()
-    print('mean class accuracy at epoch {0}: {1} '.format(epoch, confusion.mean_class_acc))
+    # confusion.updateValids()
+    print('prec at epoch {0}: {1} '.format(epoch, prec.value(1)))
+    # print('mean class accuracy at epoch {0}: {1} '.format(epoch, confusion.value()))
 
 
-def validate(test_loader, model_gnet, criterion, optimizer, epoch, opt):
+def validate(val_loader, model_gnet, criterion, epoch, cfg):
     """
     test for one epoch on the testing set
     """
-    batch_time = utils.meter.AverageMeter()
-    losses = utils.meter.AverageMeter()
-    top1 = utils.meter.AverageMeter()
+    batch_time = meter.timemeter.TimeMeter(True)
+    data_time = meter.timemeter.TimeMeter(True)
+    losses = meter.averagevaluemeter.AverageValueMeter()
+    prec = meter.classerrormeter.ClassErrorMeter(topk=[1], accuracy=True)
 
     ###############################
     ## confusion table
     ###############################
-    confusion = utils.meter.ConfusionMatrix(40)
+    confusion = meter.confusionmeter.ConfusionMeter(40)
 
     # training mode
     model_gnet.eval()
 
-    end = time.time()
-    for i, (inputs_12v, labels) in enumerate(test_loader):
-        # bz x 12 x 1 x 224 x 224
-        # re-view it to be : (bz * 12) x 3 x 224 x 224
-        # note that inputs_12v.size(2) = 1, so we expand it to be 3
-        inputs_12v = inputs_12v.view(inputs_12v.size(0) * inputs_12v.size(1), inputs_12v.size(2),
-                                     inputs_12v.size(3), inputs_12v.size(4))
+    for i, (shapes, labels) in enumerate(val_loader):
+        batch_time.reset()
+        # bz x 12 x 3 x 224 x 224
         labels = labels.long().view(-1)
-        if isinstance(inputs_12v, torch.ByteTensor):
-            inputs_12v = inputs_12v.float()
-        # # expanding: (bz * 12) x 3 x 224 x 224
-        #        inputs_12v = inputs_12v.expand(inputs_12v.size(0), 3,
-        #            inputs_12v.size(2), inputs_12v.size(3))
-
-        # byte tensor to float tensor
-        # normalize data here instead of using clouse in dataset class, because it is
-        # not format 12 x 1 x H x W in stead of C x H x W
-        #        mean =  223.03979492188
-        #        std = 1.0
-        #        inputs_12v = utils.preprocess(inputs_12v, mean, std, False) # False means not do data augmentation
-
-        inputs_12v = Variable(inputs_12v, volatile=True)
-        labels = Variable(labels, volatile=True)
+        shapes = Variable(shapes)
+        labels = Variable(labels)
 
         # print(points.size())
         # print(labels.size())
         # shift data to GPU
-        if opt.cuda:
-            inputs_12v = inputs_12v.cuda()
+        if cfg.cuda:
+            shapes = shapes.cuda()
+            #            labels = labels.long().cuda() # must be long cuda tensor
             labels = labels.cuda()  # must be long cuda tensor
 
         # forward, backward optimize
         # (bz*12) X C x H x W
-        preds = model_gnet(inputs_12v)  # bz x C x H x W
 
-        # print(labels)
-        # in pytorch, unlike torch, the label is 0-indexed (start from 0)
-        #        labels = labels.sub_(1)
+        preds = model_gnet(shapes)  # bz x C x H x W
 
-        # currently we do not use center loss here
-        loss = criterion(preds, labels)
+        if cfg.have_aux:
+            preds, aux = preds
+            loss_main = criterion(preds, labels)
+            loss_aux = criterion(aux, labels)
+            softmax_loss = loss_main + 0.3 * loss_aux
+        else:
+            softmax_loss = criterion(preds, labels)
+        # center_loss_weight = 0 # set it to 0.1, can achive 91.625, set it to 0,
+        #        loss = center_loss_weight * center_loss + softmax_loss
+        loss = softmax_loss
 
         ###########################################
         ## measure accuracy
         ###########################################
-        prec1 = utils.accuracy(preds.data, labels.data, topk=(1,))[0]
-        losses.update(loss.data[0], preds.size(0))  # batchsize
-        top1.update(prec1[0], preds.size(0))
+        prec.add(preds.data, labels.data)
+        losses.add(loss.data[0], preds.size(0))  # batchsize
 
-        ###############################################
-        ## confusion table
-        ###############################################
-        confusion.batchAdd(preds.data, labels.data)
+        confusion.add(preds.data, labels.data)
 
         # debug_here()
         # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
 
-        if i % opt.print_freq == 0:
-            print('Test: [{0}/{1}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})'.format(
-                i, len(test_loader), batch_time=batch_time, loss=losses,
-                top1=top1))
+        if i % cfg.print_freq == 0:
+            print('Epoch: [{0}][{1}/{2}]\t'
+                  'Batch Time {batch_time:.3f}\t'
+                  'Epoch Time {data_time:.3f}\t'
+                  'Loss {loss:.4f} \t'
+                  'Prec@1 {top1:.3f}\t'.format(
+                epoch, i, len(val_loader), batch_time=batch_time.value(),
+                data_time=data_time.value(), loss=losses.value()[0], top1=prec.value(1)))
             # ###########################################
             # ## Log
             # ###########################################
@@ -267,16 +209,15 @@ def validate(test_loader, model_gnet, criterion, optimizer, epoch, opt):
             #     logger.histo_summary(log_pre_name+'test/'+tag, to_np(value), step)
             # # images
 
-    print(' * Prec@1 {top1.avg:.3f}'.format(top1=top1))
+    print('mean class accuracy at epoch {0}: {1} '.format(epoch, prec.value(1)))
 
     #####################################
     ## confusion table
     #####################################
-    confusion.updateValids()
-    print('mean class accuracy at epoch {0}: {1} '.format(epoch, confusion.mean_class_acc))
+    # print('mean class accuracy at epoch {0}: {1} '.format(epoch, prec.value(1)))
 
     # print(tested_samples)
-    return top1.avg
+    return prec.value(1)
 
 
 def main():
@@ -361,7 +302,7 @@ def main():
         #################################
         # validate
         #################################
-        prec1 = validate(val_loader, model, criterion, optimizer, epoch, opt)
+        prec1 = validate(val_loader, model, criterion, epoch, cfg)
 
         ##################################
         # save checkpoints
