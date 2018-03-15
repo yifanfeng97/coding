@@ -18,6 +18,7 @@ class config(object):
         self.input_views = cfg.getint('DEFAULT', 'input_views')
         self.val_ratio = cfg.getfloat('DEFAULT', 'val_ratio')
         self.model_type = cfg.get('DEFAULT', 'model_type')
+        self.class_num = cfg.getint('DEFAULT', 'class_num')
 
         # train
         self.workers = cfg.getint('TRAIN', 'workers')

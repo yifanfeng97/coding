@@ -41,9 +41,6 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, cfg):
             shapes = shapes.cuda()
             labels = labels.cuda()
 
-        # forward, backward optimize
-        # (bz*12) X C x H x W
-
         preds = model_gnet(shapes)  # bz x C x H x W
 
         if cfg.have_aux:
@@ -63,7 +60,6 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, cfg):
         loss.backward()
         optimizer.step()
 
-
         if i % cfg.print_freq == 0:
             print('Epoch: [{0}][{1}/{2}]\t'
                   'Batch Time {batch_time:.3f}\t'
@@ -79,7 +75,7 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, cfg):
 
 def validate(val_loader, model_gnet, criterion, epoch, cfg):
     """
-    test for one epoch on the testing set
+    validation for one epoch on the val set
     """
     batch_time = meter.timemeter.TimeMeter(True)
     data_time = meter.timemeter.TimeMeter(True)
@@ -102,7 +98,6 @@ def validate(val_loader, model_gnet, criterion, epoch, cfg):
             labels = labels.cuda()
 
         # forward, backward optimize
-
         preds = model_gnet(shapes)
 
         if cfg.have_aux:
@@ -138,7 +133,7 @@ def main():
     val_dataset = datasets.modelnet40.Modelnet40_dataset(cfg, status='val')
 
     print('number of train samples is: ', len(train_dataset))
-    print('number of test samples is: ', len(val_dataset))
+    print('number of val samples is: ', len(val_dataset))
 
     best_prec1 = 0
     resume_epoch = 0
@@ -172,6 +167,9 @@ def main():
         best_prec1 = optim_state['best_prec1']
         optimizer.load_state_dict(optim_state['optim_state_best'])
 
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, 15, 0.1)
+
     criterion = nn.CrossEntropyLoss()
 
     if cfg.cuda:
@@ -195,8 +193,10 @@ def main():
             for p in model.parameters():
                 p.requires_grad = True
 
+        lr_scheduler.step(epoch=epoch)
         train(train_loader, model, criterion, optimizer, epoch, cfg)
         prec1 = validate(val_loader, model, criterion, epoch, cfg)
+
 
         # save checkpoints
         if best_prec1 < prec1:
