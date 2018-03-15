@@ -5,9 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
 
-
 __all__ = ['GVCNN', '_GVCNN']
-
 
 model_urls = {
     # Inception v3 ported from TensorFlow
@@ -23,31 +21,30 @@ def GVCNN(pretrained=False, **kwargs):
     """
     if pretrained:
         if 'transform_input' not in kwargs:
-            kwargs['transform_input'] = True
+            kwargs['transform_input'] = False
         model = _GVCNN(**kwargs)
-        
+
         pretrained_dict = model_zoo.load_url(model_urls['inception_v3_google'])
         model_dict = model.state_dict()
-        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and k.find('fc')==-1}
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and k.find('fc') == -1}
         model_dict.update(pretrained_dict)
         model.load_state_dict(model_dict)
 
-#        model.load_state_dict(model_zoo.load_url(model_urls['inception_v3_google']))
+        #        model.load_state_dict(model_zoo.load_url(model_urls['inception_v3_google']))
         return model
 
     return _GVCNN(**kwargs)
 
 
 class _GVCNN(nn.Module):
-
     def __init__(self, num_classes=40, aux_logits=False, transform_input=False,
-                 n_views = 8, n_groups = -1, get_para = False, with_group = False):
+                 n_views=8, n_groups=-1, get_para=False, with_group=False):
         super(_GVCNN, self).__init__()
         self.n_views = n_views
         self.get_para = get_para
         self.with_group = with_group
         if n_groups == -1:
-            self.n_groups =n_views
+            self.n_groups = n_views
         self.aux_logits = aux_logits
         self.transform_input = transform_input
         self.Conv2d_1a_3x3 = BasicConv2d(3, 32, kernel_size=3, stride=2)
@@ -71,7 +68,7 @@ class _GVCNN(nn.Module):
         self.fc = nn.Linear(2048, num_classes)
         ## group fc
         if self.with_group:
-            self.fc_q = nn.Linear(35*35*192, 1)
+            self.fc_q = nn.Linear(35 * 35 * 192, 1)
             self.sig = nn.Sigmoid()
 
         for m in self.modules():
@@ -87,8 +84,8 @@ class _GVCNN(nn.Module):
 
     def forward(self, x):
 
-        x= x.view(x.size(0)*x.size(1),
-                  x.size(2), x.size(3), x.size(4))
+        x = x.view(x.size(0) * x.size(1),
+                   x.size(2), x.size(3), x.size(4))
 
         if self.transform_input:
             x = x.clone()
@@ -118,7 +115,6 @@ class _GVCNN(nn.Module):
             x_quality = self.fc_q(x_quality)
             x_quality = x_quality.view(-1, self.n_views, 1, 1, 1)
 
-
             # one
             # x_quality = self.sig(x_quality)
             # x_quality = x_quality*self.n_groups
@@ -140,7 +136,7 @@ class _GVCNN(nn.Module):
             # End Quality
         # else:
         #     x_quality = x.clone()
-        
+
         x = self.Mixed_5b(x)
         # 35 x 35 x 256
         x = self.Mixed_5c(x)
@@ -191,16 +187,16 @@ class _GVCNN(nn.Module):
             # group view pooling
             x = x.view(-1, self.n_views, x.size()[1], x.size()[2], x.size()[3])
             x_quality_sum = torch.sum(x_quality, 1)
-            x = x*x_quality
+            x = x * x_quality
             x = torch.sum(x, 1)
-            x = x/x_quality_sum
+            x = x / x_quality_sum
             # end group view pooling
         else:
-            #max view pooling
+            # max view pooling
             x = x.view(-1, self.n_views, x.size()[1], x.size()[2], x.size()[3])
             x, _ = torch.max(x, 1)
-            #end max view pooling
-        
+            # end max view pooling
+
         x = x.view(x.size(0), -1)
         # 2048
 
@@ -219,7 +215,6 @@ class _GVCNN(nn.Module):
 
 
 class InceptionA(nn.Module):
-
     def __init__(self, in_channels, pool_features):
         super(InceptionA, self).__init__()
         self.branch1x1 = BasicConv2d(in_channels, 64, kernel_size=1)
@@ -251,7 +246,6 @@ class InceptionA(nn.Module):
 
 
 class InceptionB(nn.Module):
-
     def __init__(self, in_channels):
         super(InceptionB, self).__init__()
         self.branch3x3 = BasicConv2d(in_channels, 384, kernel_size=3, stride=2)
@@ -274,7 +268,6 @@ class InceptionB(nn.Module):
 
 
 class InceptionC(nn.Module):
-
     def __init__(self, in_channels, channels_7x7):
         super(InceptionC, self).__init__()
         self.branch1x1 = BasicConv2d(in_channels, 192, kernel_size=1)
@@ -313,7 +306,6 @@ class InceptionC(nn.Module):
 
 
 class InceptionD(nn.Module):
-
     def __init__(self, in_channels):
         super(InceptionD, self).__init__()
         self.branch3x3_1 = BasicConv2d(in_channels, 192, kernel_size=1)
@@ -339,7 +331,6 @@ class InceptionD(nn.Module):
 
 
 class InceptionE(nn.Module):
-
     def __init__(self, in_channels):
         super(InceptionE, self).__init__()
         self.branch1x1 = BasicConv2d(in_channels, 320, kernel_size=1)
@@ -381,7 +372,6 @@ class InceptionE(nn.Module):
 
 
 class InceptionAux(nn.Module):
-
     def __init__(self, in_channels, num_classes):
         super(InceptionAux, self).__init__()
         self.conv0 = BasicConv2d(in_channels, 128, kernel_size=1)
@@ -400,21 +390,20 @@ class InceptionAux(nn.Module):
         # 1 x 1 x 768
         # view pooling
         x = x.view(-1, 12, x.size()[1], x.size()[2], x.size()[3])
-        
+
         x_quality_sum = torch.sum(x_quality, 1)
-        x = x*x_quality
+        x = x * x_quality
         x = torch.sum(x, 1)
-        x = x/x_quality_sum
+        x = x / x_quality_sum
         x = x.view(x.size(0), -1)
         # 768
-#        print(x.size())
+        #        print(x.size())
         x = self.fc(x)
         # 1000
         return x
 
 
 class BasicConv2d(nn.Module):
-
     def __init__(self, in_channels, out_channels, **kwargs):
         super(BasicConv2d, self).__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, bias=False, **kwargs)
