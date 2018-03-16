@@ -2,6 +2,10 @@
 from __future__ import print_function
 import datasets
 import os
+import sys
+sys.path.append('datasets')
+sys.path.append('models')
+sys.path.append('utils')
 
 from models import gvcnn
 from datasets import modelnet40

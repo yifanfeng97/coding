@@ -18,10 +18,10 @@ class Modelnet40_dataset(Dataset):
     def __init__(self, cfg, status='train', img_sz=299):
         super(Modelnet40_dataset, self).__init__()
         if status == 'test':
-            with open(cfg.split_test, 'r') as f:
+            with open(cfg.split_test, 'rb') as f:
                 self.shape_list = pickle.load(f)
         else:
-            with open(cfg.split_train, 'r') as f:
+            with open(cfg.split_train, 'rb') as f:
                 self.shape_list = pickle.load(f)
             if status == 'train':
                 self.shape_list = self.shape_list['train']

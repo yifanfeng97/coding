@@ -27,9 +27,9 @@ def random_split():
     print('val num: %d'% len(val_list))
     print('test num: %d'% len(test))
 
-    with open(cfg.split_train, 'w') as f:
+    with open(cfg.split_train, 'wb') as f:
         pickle.dump(train, f)
-    with open(cfg.split_test, 'w') as f:
+    with open(cfg.split_test, 'wb') as f:
         pickle.dump(test, f)
 
 
@@ -42,8 +42,8 @@ def get_filename_list(data_raw):
             data_list.append({
                 'label': lbl,
                 'label_name':lbl_name,
-                'imgs':shape.values()[0],
-                'shape_name': shape.keys()[0]
+                'imgs':list(shape.values())[0],
+                'shape_name': list(shape.keys())[0]
             })
     return data_list
 
@@ -71,7 +71,7 @@ def get_d_list(d_root, data_views):
         else:
             raw_structed_data[shape_name].append(full_names[_idx])
 
-    raw_views = len(raw_structed_data.items()[0][1])
+    raw_views = len(list(raw_structed_data.items())[0][1])
     view_seq = raw_views//data_views
     assert view_seq*data_views == raw_views, 'wrong data views, view seq can not be int'
 
