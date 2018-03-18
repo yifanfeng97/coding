@@ -39,11 +39,23 @@ class config(object):
         self.result_sub_folder = cfg.get('TRAIN', 'result_sub_folder')
         self.ckpt_folder = cfg.get('TRAIN', 'ckpt_folder')
         self.split_folder = cfg.get('TRAIN', 'split_folder')
+        self.feature_folder = cfg.get('TRAIN', 'feature_folder')
 
         self.split_train = cfg.get('TRAIN', 'split_train')
         self.split_test = cfg.get('TRAIN', 'split_test')
         self.ckpt_model = cfg.get('TRAIN', 'ckpt_model')
         self.ckpt_optim = cfg.get('TRAIN', 'ckpt_optim')
+        self.feature_file = cfg.get('TRAIN', 'feature_file')
+
+        if self.model_type == 'group' and not osp.exists(self.ckpt_model):
+            self.init_model = osp.join(self.result_root,
+                                       '%s_%d_%d_normal'%(self.dataset, self.data_views, self.input_views),
+                                       'ckpt',
+                                       'model_best.pth')
+        else:
+            self.init_model = self.ckpt_model
+
+
 
         self.check_dirs()
 
@@ -53,6 +65,7 @@ class config(object):
         self.check_dir(self.result_sub_folder)
         self.check_dir(self.ckpt_folder)
         self.check_dir(self.split_folder)
+        self.check_dir(self.feature_folder)
 
     def check_dir(self, _dir):
         if not osp.exists(_dir):

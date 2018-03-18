@@ -12,3 +12,4 @@ def save_ckpt(cfg, model, epoch, best_prec1, optim):
     }
     torch.save(optim_state, cfg.ckpt_optim)
     # problem, should we store latest optim state or model, currently, we donot
+

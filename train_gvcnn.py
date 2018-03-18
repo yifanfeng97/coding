@@ -3,6 +3,7 @@ from __future__ import print_function
 import datasets
 import os
 import sys
+import os.path as osp
 sys.path.append('datasets')
 sys.path.append('models')
 sys.path.append('utils')
@@ -10,6 +11,7 @@ sys.path.append('utils')
 from models import gvcnn
 from datasets import modelnet40
 from utils import meter
+from models import model_helper
 import utils.config
 import train_helper
 
@@ -21,7 +23,7 @@ from torch.autograd import Variable
 
 
 
-def train(train_loader, model_gnet, criterion, optimizer, epoch, cfg):
+def train(train_loader, model, criterion, optimizer, epoch, cfg):
     """
     train for one epoch on the training set
     """
@@ -30,7 +32,7 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, cfg):
     losses = meter.AverageValueMeter()
     prec = meter.ClassErrorMeter(topk=[1], accuracy=True)
     # training mode
-    model_gnet.train()
+    model.train()
 
     for i, (shapes, labels) in enumerate(train_loader):
         batch_time.reset()
@@ -43,7 +45,7 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, cfg):
             shapes = shapes.cuda()
             labels = labels.cuda()
 
-        preds = model_gnet(shapes)  # bz x C x H x W
+        preds = model(shapes)  # bz x C x H x W
 
         if cfg.have_aux:
             preds, aux = preds
@@ -71,21 +73,19 @@ def train(train_loader, model_gnet, criterion, optimizer, epoch, cfg):
                 epoch, i, len(train_loader), batch_time=batch_time.value(),
                 data_time=data_time.value(), loss=losses.value()[0], top1=prec.value(1)))
 
-
     print('prec at epoch {0}: {1} '.format(epoch, prec.value(1)))
 
 
-def validate(val_loader, model_gnet, criterion, epoch, cfg):
+def validate(val_loader, model, epoch, cfg):
     """
     validation for one epoch on the val set
     """
     batch_time = meter.TimeMeter(True)
     data_time = meter.TimeMeter(True)
-    losses = meter.AverageValueMeter()
     prec = meter.ClassErrorMeter(topk=[1], accuracy=True)
 
-    # training mode
-    model_gnet.eval()
+    # testing mode
+    model.eval()
 
     for i, (shapes, labels) in enumerate(val_loader):
         batch_time.reset()
@@ -100,28 +100,20 @@ def validate(val_loader, model_gnet, criterion, epoch, cfg):
             labels = labels.cuda()
 
         # forward, backward optimize
-        preds = model_gnet(shapes)
+        preds = model(shapes)
 
         if cfg.have_aux:
             preds, aux = preds
-            loss_main = criterion(preds, labels)
-            loss_aux = criterion(aux, labels)
-            softmax_loss = loss_main + 0.3 * loss_aux
-        else:
-            softmax_loss = criterion(preds, labels)
-        loss = softmax_loss
 
         prec.add(preds.data, labels.data)
-        losses.add(loss.data[0], preds.size(0))  # batchsize
 
         if i % cfg.print_freq == 0:
             print('Epoch: [{0}][{1}/{2}]\t'
                   'Batch Time {batch_time:.3f}\t'
                   'Epoch Time {data_time:.3f}\t'
-                  'Loss {loss:.4f} \t'
                   'Prec@1 {top1:.3f}\t'.format(
                 epoch, i, len(val_loader), batch_time=batch_time.value(),
-                data_time=data_time.value(), loss=losses.value()[0], top1=prec.value(1)))
+                data_time=data_time.value(), top1=prec.value(1)))
 
     print('mean class accuracy at epoch {0}: {1} '.format(epoch, prec.value(1)))
 
@@ -149,9 +141,10 @@ def main():
                                    transform_input=False, num_classes=40,
                                    n_views=cfg.data_views, with_group=cfg.with_group)
     if cfg.resume_train:
-        print('loading pretrained model from {0}'.format(cfg.ckpt_model))
-        checkpoint = torch.load(cfg.ckpt_model)
-        model.load_state_dict(checkpoint['model_param_best'])
+        print('loading pretrained model from {0}'.format(cfg.init_model))
+        checkpoint = torch.load(cfg.init_model)
+        state_dict = model_helper.get_state_dict(model.state_dict(), checkpoint['model_param_best'])
+        model.load_state_dict(state_dict)
 
     # print('GVCNN: ')
     # print(model)
@@ -161,7 +154,7 @@ def main():
                           momentum=cfg.momentum,
                           weight_decay=cfg.weight_decay)
 
-    if cfg.resume_train:
+    if cfg.resume_train and osp.exists(cfg.ckpt_optim):
         print('loading optim model from {0}'.format(cfg.ckpt_optim))
         optim_state = torch.load(cfg.ckpt_optim)
 
@@ -170,7 +163,7 @@ def main():
         optimizer.load_state_dict(optim_state['optim_state_best'])
 
     lr_scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, 15, 0.1)
+        optimizer, 10, 0.1)
 
     criterion = nn.CrossEntropyLoss()
 
@@ -181,31 +174,63 @@ def main():
 
     for p in model.parameters():
         p.requires_grad = False  # to avoid computation
-    for p in model.fc.parameters():
-        p.requires_grad = True  # to  computation
-    if cfg.with_group:
-        for p in model.fc_q.parameters():
-            p.requires_grad = True
-    if cfg.have_aux:
-        for p in model.AuxLogits.parameters():
+
+    if cfg.model_type == 'normal':
+        for p in model.fc.parameters():
             p.requires_grad = True  # to  computation
-
-    for epoch in range(resume_epoch, cfg.max_epoch):
-        if epoch >= 20:
-            for p in model.parameters():
+        if cfg.with_group:
+            for p in model.fc_q.parameters():
                 p.requires_grad = True
+        if cfg.have_aux:
+            for p in model.AuxLogits.parameters():
+                p.requires_grad = True  # to  computation
 
-        lr_scheduler.step(epoch=epoch)
-        train(train_loader, model, criterion, optimizer, epoch, cfg)
-        prec1 = validate(val_loader, model, criterion, epoch, cfg)
+        for epoch in range(resume_epoch, cfg.max_epoch):
+            if epoch >= 20:
+                for p in model.parameters():
+                    p.requires_grad = True
 
-        # save checkpoints
-        if best_prec1 < prec1:
-            best_prec1 = prec1
+            lr_scheduler.step(epoch=epoch)
+            train(train_loader, model, criterion, optimizer, epoch, cfg)
+            prec1 = validate(val_loader, model, epoch, cfg)
+
+            # save checkpoints
+            if best_prec1 < prec1:
+                best_prec1 = prec1
             train_helper.save_ckpt(cfg, model, epoch, best_prec1, optimizer)
 
+            print('best accuracy: ', best_prec1)
+    else:
+        state = 0
+        for epoch in range(resume_epoch, cfg.max_epoch):
+            if epoch % 2 == 0:
+                if state == 0:
+                    state = 1
+                    for p in model.fc_q.parameters():
+                        p.requires_grad = False
+                    for p in model.fc.parameters():
+                        p.requires_grad = True  # to  computation
+                elif state == 1:
+                    state = 2
+                    for p in model.fc_q.parameters():
+                        p.requires_grad = True
+                    for p in model.fc.parameters():
+                        p.requires_grad = False  # to  computation
+                elif state == 2:
+                    state = 0
+                    for p in model.parameters():
+                        p.requires_grad = True  # to  computation
 
-        print('best accuracy: ', best_prec1)
+            lr_scheduler.step(epoch=epoch)
+            train(train_loader, model, criterion, optimizer, epoch, cfg)
+            prec1 = validate(val_loader, model, epoch, cfg)
+
+            # save checkpoints
+            if best_prec1 < prec1:
+                best_prec1 = prec1
+            train_helper.save_ckpt(cfg, model, epoch, best_prec1, optimizer)
+
+            print('best accuracy: ', best_prec1)
 
 if __name__ == '__main__':
     main()

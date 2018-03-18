@@ -8,8 +8,6 @@ import os.path
 import torch
 import h5py
 import pickle
-import utils
-import numpy as np
 import img_transform
 from PIL import Image
 

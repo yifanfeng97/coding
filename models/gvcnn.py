@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
+import model_helper
 
 __all__ = ['GVCNN']
 
@@ -14,10 +15,11 @@ model_urls = {
 
 class GVCNN(nn.Module):
     def __init__(self, pretrained=False, num_classes=40, aux_logits=False, transform_input=False,
-                 n_views=8, n_groups=-1, get_para=False, with_group=False):
+                 n_views=8, n_groups=-1, get_feature=False, get_quality=False, with_group=False):
         super(GVCNN, self).__init__()
         self.n_views = n_views
-        self.get_para = get_para
+        self.get_feature = get_feature
+        self.get_quality = get_quality
         self.with_group = with_group
         if n_groups == -1:
             self.n_groups = n_views
@@ -53,9 +55,10 @@ class GVCNN(nn.Module):
         if pretrained:
             print('init model param from pretrained googlenet!')
             pretrained_dict = model_zoo.load_url(model_urls['inception_v3_google'])
-            model_dict = self.state_dict()
-            pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and k.find('fc') == -1}
-            model_dict.update(pretrained_dict)
+            model_dict = model_helper.get_state_dict(self.state_dict(), pretrained_dict)
+            # model_dict = self.state_dict()
+            # pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and k.find('fc') == -1}
+            # model_dict.update(pretrained_dict)
             self.load_state_dict(model_dict)
             # init fc
             for m in self.modules():
@@ -107,32 +110,32 @@ class GVCNN(nn.Module):
 
         if self.with_group:
             # Quality fc
-            x_quality = x.clone()
-            x_quality = x_quality.view(x_quality.size(0), -1)
-            x_quality = self.fc_q(x_quality)
-            x_quality = x_quality.view(-1, self.n_views, 1, 1, 1)
+            quality = x.clone()
+            quality = quality.view(quality.size(0), -1)
+            quality = self.fc_q(quality)
+            quality = quality.view(-1, self.n_views, 1, 1, 1)
 
             # one
-            # x_quality = self.sig(x_quality)
-            # x_quality = x_quality*self.n_groups
-            # # print(x_quality.data.cpu())
-            # x_quality = torch.ceil(x_quality)
+            # quality = self.sig(quality)
+            # quality = quality*self.n_groups
+            # # print(quality.data.cpu())
+            # quality = torch.ceil(quality)
 
             # two
-            # x_quality = F.relu(x_quality)+1
+            # quality = F.relu(quality)+1
 
             # three
-            x_quality = torch.abs(x_quality)
-            x_quality = self.sig(torch.log(x_quality))
-            if self.get_para:
-                x_quality_tmp = x_quality.clone()
-            # print(x_quality.data.cpu())
-            x_quality = x_quality * self.n_groups
-            x_quality = torch.ceil(x_quality)
-            # print(x_quality.data.cpu())
+            quality = torch.abs(quality)
+            quality = self.sig(torch.log(quality))
+            if self.get_quality:
+                quality_tmp = quality.clone()
+            # print(quality.data.cpu())
+            quality = quality * self.n_groups
+            quality = torch.ceil(quality)
+            # print(quality.data.cpu())
             # End Quality
         # else:
-        #     x_quality = x.clone()
+        #     quality = x.clone()
 
         x = self.Mixed_5b(x)
         # 35 x 35 x 256
@@ -155,10 +158,10 @@ class GVCNN(nn.Module):
             if self.with_group:
                 # group view pooling
                 x_t = x_t.view(-1, self.n_views, x_t.size()[1], x_t.size()[2], x_t.size()[3])
-                x_quality_sum = torch.sum(x_quality, 1)
-                x_t = x_t * x_quality
+                quality_sum = torch.sum(quality, 1)
+                x_t = x_t * quality
                 x_t = torch.sum(x_t, 1)
-                x_t = x_t / x_quality_sum
+                x_t = x_t / quality_sum
                 # end group view pooling
             else:
                 # max view pooling
@@ -183,10 +186,10 @@ class GVCNN(nn.Module):
         if self.with_group:
             # group view pooling
             x = x.view(-1, self.n_views, x.size()[1], x.size()[2], x.size()[3])
-            x_quality_sum = torch.sum(x_quality, 1)
-            x = x * x_quality
+            quality_sum = torch.sum(quality, 1)
+            x = x * quality
             x = torch.sum(x, 1)
-            x = x / x_quality_sum
+            x = x / quality_sum
             # end group view pooling
         else:
             # max view pooling
@@ -197,18 +200,26 @@ class GVCNN(nn.Module):
         x = x.view(x.size(0), -1)
         # 2048
 
-        if self.get_para:
-            if self.with_group:
-                return x, x_quality_tmp
-            else:
-                return x
+        feature = x.clone()
+        # if self.get_para:
+        #     if self.with_group:
+        #         return x, quality_tmp
+        #     else:
+        #         return x
 
         x = self.fc(x)
         # 1000 (num_classes)
         if self.training and self.aux_logits:
             return x, aux
         else:
-            return x
+            if self.get_feature and self.get_quality:
+                return x, feature, quality_tmp
+            elif self.get_feature:
+                return x, feature
+            elif self.get_quality:
+                return x, quality_tmp
+            else:
+                return x
 
 
 class InceptionA(nn.Module):
@@ -377,7 +388,7 @@ class InceptionAux(nn.Module):
         self.fc = nn.Linear(768, num_classes)
         self.fc.stddev = 0.001
 
-    def forward(self, x, x_quality):
+    def forward(self, x):
         # 17 x 17 x 768
         x = F.avg_pool2d(x, kernel_size=5, stride=3)
         # 5 x 5 x 768
@@ -385,13 +396,6 @@ class InceptionAux(nn.Module):
         # 5 x 5 x 128
         x = self.conv1(x)
         # 1 x 1 x 768
-        # view pooling
-        x = x.view(-1, 12, x.size()[1], x.size()[2], x.size()[3])
-
-        x_quality_sum = torch.sum(x_quality, 1)
-        x = x * x_quality
-        x = torch.sum(x, 1)
-        x = x / x_quality_sum
         x = x.view(x.size(0), -1)
         # 768
         #        print(x.size())
