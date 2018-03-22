@@ -143,7 +143,9 @@ def main():
     if cfg.resume_train:
         print('loading pretrained model from {0}'.format(cfg.init_model))
         checkpoint = torch.load(cfg.init_model)
+        # if cfg.with_group
         state_dict = model_helper.get_state_dict(model.state_dict(), checkpoint['model_param_best'])
+        # model.load_state_dict(checkpoint['model_param_best'])
         model.load_state_dict(state_dict)
 
     # print('GVCNN: ')
