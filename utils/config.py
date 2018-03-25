@@ -17,6 +17,7 @@ class config(object):
         self.data_views = cfg.getint('DEFAULT', 'data_views')
         self.input_views = cfg.getint('DEFAULT', 'input_views')
         self.val_ratio = cfg.getfloat('DEFAULT', 'val_ratio')
+        self.random_split = cfg.getboolean('DEFAULT', 'random_split')
         self.model_type = cfg.get('DEFAULT', 'model_type')
         self.with_group = True if self.model_type=='group' else False
         self.class_num = cfg.getint('DEFAULT', 'class_num')

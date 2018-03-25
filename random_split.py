@@ -13,12 +13,12 @@ def random_split():
     train = get_filename_list(train)
     test = get_filename_list(test)
 
-    val_num = int(len(train)*cfg.val_ratio)
-
-    shuffle(train)
-    shuffle(test)
-    val_list = train[:val_num]
-    train_list = train[val_num:]
+    train_num = int(len(train)*(1-cfg.val_ratio))
+    if cfg.random_split:
+        shuffle(train)
+        shuffle(test)
+    train_list = train[:train_num]
+    val_list = train[train_num:]
     train = {
         'train': train_list,
         'val': val_list
